@@ -12,9 +12,10 @@
 #include <map>  
 #include <algorithm>  
 #include <list>  
+#include <mutex>
   
 using namespace std;  
-  
+
   
 class Timer {  
 public:  
@@ -27,7 +28,7 @@ public:
         int fd;  
         CALLBACK_FN cbf;  
         void *args;  
-    } TimerEvent;  
+    } TimerEvent;    
   
     /* 
      *  Name: start 
@@ -57,11 +58,11 @@ private:
  * create a new thread for epoll
  *
  */
+std::mutex timer_mutex;
 class TimerPrivate {
     public:
         TimerPrivate();
         ~TimerPrivate() {
-            pthread_mutex_destroy(&m_mutex);
         }
 
         // Some constant
@@ -99,7 +100,6 @@ class TimerPrivate {
         typedef map<int, Timer::TimerEvent> MapTimerEvent;
         MapTimerEvent m_map_te;
         pthread_t m_tid;
-        pthread_mutex_t m_mutex; 
 };
 
 // The declare of TimerPrivate
@@ -107,13 +107,6 @@ static TimerPrivate g_tp;
 
 TimerPrivate::TimerPrivate() {
     try {
-        // Initialization
-        // Init mutex
-        int res = pthread_mutex_init(&m_mutex, 0);
-        if(res == -1) {
-            perror("pthread_mutex_init");
-            throw;
-        }
 
         // Create epoll
         m_epoll_fd = epoll_create(MaxEPOLLSize);
@@ -123,7 +116,7 @@ TimerPrivate::TimerPrivate() {
         }
 
         // Create thread for epoll
-        res = pthread_create(&m_tid, 0, TimerPrivate::epoll_proc, 0);
+        int res = pthread_create(&m_tid, 0, TimerPrivate::epoll_proc, 0);
         if(res == -1) {
             perror("pthread_create");
             throw;
@@ -136,7 +129,6 @@ void* TimerPrivate::epoll_proc(void *) {
     while(1) {
         // Wait for notice
         int n =epoll_wait(g_tp.m_epoll_fd, events, MaxEPOLLSize, -1); 
-        pthread_mutex_lock(&g_tp.m_mutex);
         for(int i=0; i<n; ++i) {
             int fd = events[i].data.fd;
             // Clear buffer
@@ -149,12 +141,12 @@ void* TimerPrivate::epoll_proc(void *) {
                 te.cbf(te.args);
             }
         }
-        pthread_mutex_unlock(&g_tp.m_mutex);
     }
     return 0;
 }
 
 Timer::TimerEvent TimerPrivate::get_timer_event(int fd) {
+    std::lock_guard<std::mutex> lock(timer_mutex);
     return g_tp.m_map_te[fd];
 }
 
@@ -168,7 +160,7 @@ bool TimerPrivate::add_timer_event(const Timer::TimerEvent &te) {
         perror("epoll_ctl");
         return false;
     }
-
+    std::lock_guard<std::mutex> lock(timer_mutex);
     // Insert timer event to map
     g_tp.m_map_te[te.fd] = te;
 
@@ -184,6 +176,7 @@ void TimerPrivate::remove_timer_event(const int fd) {
     }
 
     // Remove from map
+    std::lock_guard<std::mutex> lock(timer_mutex);
     MapTimerEvent::iterator iter = g_tp.m_map_te.find(fd);
     g_tp.m_map_te.erase(iter);
 }
@@ -200,8 +193,6 @@ Timer::~Timer() {
 }
 
 bool Timer::start(const uint interval, CALLBACK_FN cbf, void *args, const bool triggered_on_start) {
-    pthread_mutex_lock(&g_tp.m_mutex);
-
     if(!m_is_start) {
         if(!cbf) {
             cout << "start:" << "callback function can't set to be null" << endl;
@@ -249,12 +240,11 @@ bool Timer::start(const uint interval, CALLBACK_FN cbf, void *args, const bool t
         return false;
     }
 
-    pthread_mutex_unlock(&g_tp.m_mutex);
     return true;
 }
 
 void Timer::stop() {
-    pthread_mutex_lock(&g_tp.m_mutex);
+ //   std::lock_guard<std::mutex> lock(timer_mutex);
 
     // Remove from map and epoll
     TimerPrivate::remove_timer_event(m_te.fd);
@@ -268,7 +258,6 @@ void Timer::stop() {
     // Clear the attributes of class
     m_is_start = false;
 
-    pthread_mutex_unlock(&g_tp.m_mutex);
 }
 
 /**************************************************************************/
@@ -279,11 +268,19 @@ void timer_proc(void *args) {
 
 int main() {
     list<Timer*> l;
-    for(int i=0; i<10;++i) {
+    for(int i=0; i<1000;++i) {
         Timer *t = new Timer();
         t->start(500, timer_proc, reinterpret_cast<void*>(i));
         l.push_back(t);
     }
+
     sleep(3);
+
+    for(Timer* todel:l)
+    {
+        delete(todel);
+
+    }
+
     return 0;
 }
