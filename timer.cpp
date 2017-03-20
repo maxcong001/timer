@@ -59,10 +59,10 @@ private:
  *
  */
 std::mutex timer_mutex;
-class TimerPrivate {
+class TimerPool {
     public:
-        TimerPrivate();
-        ~TimerPrivate() {
+        TimerPool();
+        ~TimerPool() {
         }
 
         // Some constant
@@ -102,10 +102,10 @@ class TimerPrivate {
         pthread_t m_tid;
 };
 
-// The declare of TimerPrivate
-static TimerPrivate g_tp;
+// The declare of TimerPool
+static TimerPool g_tp;
 
-TimerPrivate::TimerPrivate() {
+TimerPool::TimerPool() {
     try {
 
         // Create epoll
@@ -116,7 +116,7 @@ TimerPrivate::TimerPrivate() {
         }
 
         // Create thread for epoll
-        int res = pthread_create(&m_tid, 0, TimerPrivate::epoll_proc, 0);
+        int res = pthread_create(&m_tid, 0, TimerPool::epoll_proc, 0);
         if(res == -1) {
             perror("pthread_create");
             throw;
@@ -124,7 +124,7 @@ TimerPrivate::TimerPrivate() {
     } catch (...) {} 
 }
 
-void* TimerPrivate::epoll_proc(void *) {
+void* TimerPool::epoll_proc(void *) {
     struct epoll_event events[MaxEPOLLSize];
     while(1) {
         // Wait for notice
@@ -136,7 +136,7 @@ void* TimerPrivate::epoll_proc(void *) {
             read(fd, &buf, sizeof(uint64_t));
 
             // Call the callback function when timer expiration
-            Timer::TimerEvent te = TimerPrivate::get_timer_event(events[i].data.fd);
+            Timer::TimerEvent te = TimerPool::get_timer_event(events[i].data.fd);
             if(te.cbf) {
                 te.cbf(te.args);
             }
@@ -145,12 +145,12 @@ void* TimerPrivate::epoll_proc(void *) {
     return 0;
 }
 
-Timer::TimerEvent TimerPrivate::get_timer_event(int fd) {
+Timer::TimerEvent TimerPool::get_timer_event(int fd) {
     std::lock_guard<std::mutex> lock(timer_mutex);
     return g_tp.m_map_te[fd];
 }
 
-bool TimerPrivate::add_timer_event(const Timer::TimerEvent &te) {
+bool TimerPool::add_timer_event(const Timer::TimerEvent &te) {
     // Add timer event for epoll
     struct epoll_event epe;
     epe.data.fd = te.fd;
@@ -167,7 +167,7 @@ bool TimerPrivate::add_timer_event(const Timer::TimerEvent &te) {
     return true;
 }
 
-void TimerPrivate::remove_timer_event(const int fd) {
+void TimerPool::remove_timer_event(const int fd) {
     // Remove from epoll
     int res = epoll_ctl(g_tp.m_epoll_fd, EPOLL_CTL_DEL, fd,0);
     if(res == -1) {
@@ -227,7 +227,7 @@ bool Timer::start(const uint interval, CALLBACK_FN cbf, void *args, const bool t
         te.fd = fd;
         te.cbf = cbf;
         te.args = args;
-        res = TimerPrivate::add_timer_event(te);
+        res = TimerPool::add_timer_event(te);
         if(res == false) {
             return false;
         }
@@ -247,7 +247,7 @@ void Timer::stop() {
  //   std::lock_guard<std::mutex> lock(timer_mutex);
 
     // Remove from map and epoll
-    TimerPrivate::remove_timer_event(m_te.fd);
+    TimerPool::remove_timer_event(m_te.fd);
 
     // Close the timer
     int res = close(m_te.fd);
@@ -279,7 +279,6 @@ int main() {
     for(Timer* todel:l)
     {
         delete(todel);
-
     }
 
     return 0;
