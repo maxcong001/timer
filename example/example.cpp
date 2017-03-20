@@ -1,3 +1,5 @@
+#include "Timer.hpp"
+using namespace std;
 /**************************************************************************/
 // Test
 void timer_proc(void *args) {

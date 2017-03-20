@@ -1,8 +1,10 @@
-#include "TimerPool.hpp"
+#include "Timer.hpp"
   
 using namespace std;  
 
 
+static TimerPool timer_pool_glob;
+std::mutex timer_mutex;
 TimerPool::TimerPool() {
     try {
 
