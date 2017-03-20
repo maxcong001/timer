@@ -103,7 +103,7 @@ class TimerPool {
 };
 
 // The declare of TimerPool
-static TimerPool g_tp;
+static TimerPool timer_pool_glob;
 
 TimerPool::TimerPool() {
     try {
@@ -128,7 +128,7 @@ void* TimerPool::epoll_proc(void *) {
     struct epoll_event events[MaxEPOLLSize];
     while(1) {
         // Wait for notice
-        int n =epoll_wait(g_tp.m_epoll_fd, events, MaxEPOLLSize, -1); 
+        int n =epoll_wait(timer_pool_glob.m_epoll_fd, events, MaxEPOLLSize, -1); 
         for(int i=0; i<n; ++i) {
             int fd = events[i].data.fd;
             // Clear buffer
@@ -147,7 +147,7 @@ void* TimerPool::epoll_proc(void *) {
 
 Timer::TimerEvent TimerPool::get_timer_event(int fd) {
     std::lock_guard<std::mutex> lock(timer_mutex);
-    return g_tp.m_map_te[fd];
+    return timer_pool_glob.m_map_te[fd];
 }
 
 bool TimerPool::add_timer_event(const Timer::TimerEvent &te) {
@@ -155,21 +155,21 @@ bool TimerPool::add_timer_event(const Timer::TimerEvent &te) {
     struct epoll_event epe;
     epe.data.fd = te.fd;
     epe.events = EPOLLIN | EPOLLET;
-    int res = epoll_ctl(g_tp.m_epoll_fd, EPOLL_CTL_ADD, te.fd, &epe); 
+    int res = epoll_ctl(timer_pool_glob.m_epoll_fd, EPOLL_CTL_ADD, te.fd, &epe); 
     if(res == -1) {
         perror("epoll_ctl");
         return false;
     }
     std::lock_guard<std::mutex> lock(timer_mutex);
     // Insert timer event to map
-    g_tp.m_map_te[te.fd] = te;
+    timer_pool_glob.m_map_te[te.fd] = te;
 
     return true;
 }
 
 void TimerPool::remove_timer_event(const int fd) {
     // Remove from epoll
-    int res = epoll_ctl(g_tp.m_epoll_fd, EPOLL_CTL_DEL, fd,0);
+    int res = epoll_ctl(timer_pool_glob.m_epoll_fd, EPOLL_CTL_DEL, fd,0);
     if(res == -1) {
         perror("epoll_ctl");
         return; 
@@ -177,8 +177,8 @@ void TimerPool::remove_timer_event(const int fd) {
 
     // Remove from map
     std::lock_guard<std::mutex> lock(timer_mutex);
-    MapTimerEvent::iterator iter = g_tp.m_map_te.find(fd);
-    g_tp.m_map_te.erase(iter);
+    MapTimerEvent::iterator iter = timer_pool_glob.m_map_te.find(fd);
+    timer_pool_glob.m_map_te.erase(iter);
 }
 
 Timer::Timer() : m_is_start(false) {
