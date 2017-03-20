@@ -41,7 +41,7 @@ Timer::~Timer() {
     }
 }
 
-bool Timer::start(const uint interval, CALLBACK_FN cbf, void *args, const bool triggered_on_start) {
+bool Timer::start(const uint interval, CALLBACK_FN cbf, void *args, const bool triggered_on_start, int* timer_fd) {
     if(!m_is_start) {
         if(!cbf) {
             cout << "start:" << "callback function can't set to be null" << endl;
@@ -70,12 +70,17 @@ bool Timer::start(const uint interval, CALLBACK_FN cbf, void *args, const bool t
             perror("timerfd_settime");
             return false;
         }
+        if (!timer_fd)
+        {
+            *timer_fd = fd;
+        }
 
         // Add timer for epoll
         TimerEvent te;
         te.fd = fd;
         te.cbf = cbf;
         te.args = args;
+        te.timer_instance = this;
         res = TimerPool::add_timer_event(te);
         if(res == false) {
             return false;
@@ -107,5 +112,13 @@ void Timer::stop() {
     // Clear the attributes of class
     m_is_start = false;
 
+}
+void  Timer::stop(int timer_fd)
+{
+    Timer::TimerEvent te = TimerPool::get_timer_event(timer_fd);
+    if (!te.timer_instance)
+    {
+        delete te.timer_instance;
+    }
 }
 

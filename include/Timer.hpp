@@ -51,6 +51,7 @@ public:
         int fd;
         CALLBACK_FN cbf;
         void *args;
+        Timer* timer_instance;
     } TimerEvent;
 
     /*
@@ -63,7 +64,7 @@ public:
      *
      */
     bool start(const uint interval, CALLBACK_FN cbf,
-            void *args,const bool triggered_on_start=false);
+            void *args,const bool triggered_on_start=false, int *timer_fd = NULL);
 
     /*
      *  Name: stop
@@ -72,9 +73,12 @@ public:
      */
     void stop();
 
+    static void stop(int timer_fd);
+
 private:
     bool m_is_start;
     TimerEvent m_te;
+    //int timer_fd;
 };
 
 class TimerPool {
