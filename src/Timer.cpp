@@ -70,7 +70,7 @@ bool Timer::start(const uint interval, CALLBACK_FN cbf, void *args, const bool t
             perror("timerfd_settime");
             return false;
         }
-        if (!timer_fd)
+        if (timer_fd)
         {
             *timer_fd = fd;
         }
