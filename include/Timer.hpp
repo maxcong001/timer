@@ -72,7 +72,12 @@ public:
      *
      */
     void stop();
-
+    /*
+     *  Name: start
+     *  Brief: stop the timer
+     *  @timer_fd: timer id
+     *
+     */
     static void stop(int timer_fd);
 
 private:
